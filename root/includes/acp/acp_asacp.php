@@ -458,6 +458,7 @@ class acp_asacp
 					'asacp_ocban_username'					=> array('lang' => 'ASACP_BAN_USERNAME', 'validate' => 'bool', 'type' => 'radio:yes_no', 'explain' => true),
 					'asacp_ocban_deactivate'				=> array('lang' => 'ASACP_BAN_DEACTIVATE_USER', 'validate' => 'bool', 'type' => 'radio:yes_no', 'explain' => true),
 					'asacp_ocban_move_to_group'				=> array('lang' => 'ASACP_BAN_MOVE_TO_GROUP', 'validate' => 'int:0', 'type' => 'custom', 'method' => 'group_list', 'explain' => true),
+					'asacp_ocban_move_posts_to_forum'				=> array('lang' => 'ASACP_BAN_MOVE_POSTS_TO_FORUM', 'validate' => 'int:0', 'type' => 'custom', 'method' => 'forum_list', 'explain' => true),
 					'asacp_ocban_delete_posts'				=> array('lang' => 'ASACP_BAN_DELETE_POSTS', 'validate' => 'bool', 'type' => 'radio:yes_no', 'explain' => true),
 					'asacp_ocban_clear_outbox'				=> array('lang' => 'ASACP_BAN_CLEAR_OUTBOX', 'validate' => 'bool', 'type' => 'radio:yes_no', 'explain' => true),
 					'asacp_ocban_delete_avatar'				=> array('lang' => 'ASACP_BAN_DELETE_AVATAR', 'validate' => 'bool', 'type' => 'radio:yes_no', 'explain' => true),
@@ -517,6 +518,14 @@ class acp_asacp
 
 		return $return;
 	}
+	
+	function forum_list($value, $key)
+  {
+    $return = '<select name="config[' . $key . ']"><option value="0">--------</option>';
+    $return .= make_forum_select($value, false, false, true);
+    $return .= "</select>";    
+    return $return;
+  }
 
 	function sfs_action($value, $key)
 	{

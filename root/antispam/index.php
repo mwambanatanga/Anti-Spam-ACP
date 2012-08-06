@@ -201,6 +201,144 @@ switch ($mode)
 			{
 				delete_posts('poster_id', $user_id);
 			}
+			
+			// Move the user's posts
+			if ($config['asacp_ocban_move_posts_to_forum'])
+			{
+				// move posts taken from acp_users
+				$new_forum_id = $config['asacp_ocban_move_posts_to_forum'];
+				
+				if ($new_forum_id != 0)
+				{
+					// Is the new forum postable to?
+					$sql = 'SELECT forum_name, forum_type
+					 		FROM ' . FORUMS_TABLE . "
+							WHERE forum_id = $new_forum_id";
+					$result = $db->sql_query($sql);
+					$forum_info = $db->sql_fetchrow($result);
+					$db->sql_freeresult($result);
+	
+					if ($forum_info)
+					{
+						if ($forum_info['forum_type'] == FORUM_POST)
+						{
+							// Two stage?
+							// Move topics comprising only posts from this user
+							$topic_id_ary = $move_topic_ary = $move_post_ary = $new_topic_id_ary = array();
+							$forum_id_ary = array($new_forum_id);
+			
+							$sql = 'SELECT topic_id, COUNT(post_id) AS total_posts
+								FROM ' . POSTS_TABLE . "
+								WHERE poster_id = $user_id
+									AND forum_id <> $new_forum_id
+								GROUP BY topic_id";
+							$result = $db->sql_query($sql);
+			
+							while ($row = $db->sql_fetchrow($result))
+							{
+								$topic_id_ary[$row['topic_id']] = $row['total_posts'];
+							}
+							$db->sql_freeresult($result);
+			
+							if (sizeof($topic_id_ary))
+							{
+								$sql = 'SELECT topic_id, forum_id, topic_title, topic_replies, topic_replies_real, topic_attachment
+									FROM ' . TOPICS_TABLE . '
+									WHERE ' . $db->sql_in_set('topic_id', array_keys($topic_id_ary));
+								$result = $db->sql_query($sql);
+			
+								while ($row = $db->sql_fetchrow($result))
+								{
+									if (max($row['topic_replies'], $row['topic_replies_real']) + 1 == $topic_id_ary[$row['topic_id']])
+									{
+										$move_topic_ary[] = $row['topic_id'];
+									}
+									else
+									{
+										$move_post_ary[$row['topic_id']]['title'] = $row['topic_title'];
+										$move_post_ary[$row['topic_id']]['attach'] = ($row['topic_attachment']) ? 1 : 0;
+									}
+			
+									$forum_id_ary[] = $row['forum_id'];
+								}
+								$db->sql_freeresult($result);
+							}
+			
+							// Entire topic comprises posts by this user, move these topics
+							if (sizeof($move_topic_ary))
+							{
+								move_topics($move_topic_ary, $new_forum_id, false);
+							}
+			
+							if (sizeof($move_post_ary))
+							{
+								// Create new topic
+								// Update post_ids, report_ids, attachment_ids
+								foreach ($move_post_ary as $topic_id => $post_ary)
+								{
+									// Create new topic
+									$sql = 'INSERT INTO ' . TOPICS_TABLE . ' ' . $db->sql_build_array('INSERT', array(
+										'topic_poster'				=> $user_id,
+										'topic_time'				=> time(),
+										'forum_id' 					=> $new_forum_id,
+										'icon_id'					=> 0,
+										'topic_approved'			=> 1,
+										'topic_title' 				=> $post_ary['title'],
+										'topic_first_poster_name'	=> $user_row['username'],
+										'topic_type'				=> POST_NORMAL,
+										'topic_time_limit'			=> 0,
+										'topic_attachment'			=> $post_ary['attach'])
+									);
+									$db->sql_query($sql);
+			
+									$new_topic_id = $db->sql_nextid();
+			
+									// Move posts
+									$sql = 'UPDATE ' . POSTS_TABLE . "
+										SET forum_id = $new_forum_id, topic_id = $new_topic_id
+										WHERE topic_id = $topic_id
+											AND poster_id = $user_id";
+									$db->sql_query($sql);
+			
+									if ($post_ary['attach'])
+									{
+										$sql = 'UPDATE ' . ATTACHMENTS_TABLE . "
+											SET topic_id = $new_topic_id
+											WHERE topic_id = $topic_id
+												AND poster_id = $user_id";
+										$db->sql_query($sql);
+									}
+			
+									$new_topic_id_ary[] = $new_topic_id;
+								}
+							}
+			
+							$forum_id_ary = array_unique($forum_id_ary);
+							$topic_id_ary = array_unique(array_merge(array_keys($topic_id_ary), $new_topic_id_ary));
+			
+							if (sizeof($topic_id_ary))
+							{
+								sync('topic_reported', 'topic_id', $topic_id_ary);
+								sync('topic', 'topic_id', $topic_id_ary);
+							}
+			
+							if (sizeof($forum_id_ary))
+							{
+								sync('forum', 'forum_id', $forum_id_ary, false, true);
+							}
+			
+			
+							add_log('admin', 'LOG_USER_MOVE_POSTS', $user_row['username'], $forum_info['forum_name']);
+							add_log('user', $user_id, 'LOG_USER_MOVE_POSTS_USER', $forum_info['forum_name']);
+						} else {
+							add_log('admin', 'LOG_USER_MOVE_POSTS_ERROR', $user_id, $new_forum_id);
+						}
+					} else {
+						add_log('admin', 'LOG_USER_MOVE_POSTS_ERROR', $user_id, $new_forum_id);
+					}
+				}
+			}
+			// end move the users posts
 
 			// Delete the user's avatar
 			if ($config['asacp_ocban_delete_avatar'] && $user_row['user_avatar'])
@@ -380,6 +518,15 @@ switch ($mode)
 			if ($config['asacp_ocban_delete_posts'])
 			{
 				$ban_actions[] = $user->lang['ASACP_BAN_DELETE_POSTS'];
+			}
+			if ($config['asacp_ocban_move_posts_to_forum'])
+			{
+				$sql = 'SELECT forum_name FROM ' . FORUMS_TABLE . ' WHERE forum_id = ' . $config['asacp_ocban_move_posts_to_forum'];
+				$result = $db->sql_query($sql);
+				$forum_name = $db->sql_fetchfield('forum_name');
+				$db->sql_freeresult($result);
+
+				$ban_actions[] = $user->lang['ASACP_BAN_MOVE_POSTS_TO_FORUM'] . ': ' . $forum_name;
 			}
 			if ($config['asacp_ocban_delete_avatar'])
 			{
