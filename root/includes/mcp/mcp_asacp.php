@@ -24,7 +24,7 @@ class mcp_asacp
 		global $db, $user, $auth, $template, $cache;
 		global $config, $phpbb_root_path, $phpEx;
 
-		$user->add_lang(array('acp/board', 'mods/asacp', 'mods/acp_asacp', 'install', 'acp/common'));
+		$user->add_lang(array('acp/board', 'mods/asacp', 'mods/acp_asacp', 'install', 'acp/common', 'mods/info_acp_asacp'));
 		include($phpbb_root_path . 'antispam/acp_functions.' . $phpEx);
 
 		$error = $notify = array();
